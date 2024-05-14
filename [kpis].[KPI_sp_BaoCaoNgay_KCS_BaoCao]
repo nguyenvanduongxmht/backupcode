@@ -1,0 +1,175 @@
+USE [XMHT]
+GO
+/****** Object:  StoredProcedure [kpis].[KPI_sp_BaoCaoNgay_KCS_BaoCao]    Script Date: 5/14/2024 9:37:09 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+create PROCEDURE [kpis].[KPI_sp_BaoCaoNgay_KCS_BaoCao]
+	@GID uniqueidentifier,
+	@ThieBiID int,
+	@ngay nvarchar(20)
+	
+AS
+BEGIN
+	SET NOCOUNT ON;	
+	declare @ngaybatdau datetime= (SELECT convert(datetime,@ngay, 103))
+	declare @TaoBang nvarchar(max);
+	declare @Cot nvarchar(max),
+	--@CotFormat nvarchar(max),
+	@CotTen nvarchar(max),@DC nvarchar(99);
+	declare @ThemDuLieu nvarchar(max);
+	declare @_Tong_Hop_ nvarchar(max);
+	declare @TSQL nvarchar(max);
+
+	set @TaoBang='TT nvarchar(2),[Gio] nvarchar(20)';
+	select @TaoBang+=',['+cast(a.ID as nvarchar(30))+'] nvarchar(20) '
+	FROM [kpis].[KPI_TB_SanPham_HeSoChatLuong] a
+	where a.ThietBiID=@ThieBiID and a.ThuTuXuatHienCuaHSCL>0 and a.baocao=1 and a.TrangThai =20 
+	order by a.ThuTuXuatHienCuaHSCL;
+	set @TaoBang='declare @TBL table('+@TaoBang+');'+char(13)
+	--select @TaoBang;return;
+
+	set @Cot='';
+	SELECT @Cot+=',['+cast(a.ID as nvarchar(30))+']'
+	FROM [kpis].[KPI_TB_SanPham_HeSoChatLuong] a
+	where a.ThietBiID=@ThieBiID and a.ThuTuXuatHienCuaHSCL>0 and a.baocao=1  and a.TrangThai =20
+	order by a.ThuTuXuatHienCuaHSCL;
+	set @Cot=substring(@Cot,2,len(@Cot))  ;
+
+
+--select @Cot; return;	  
+--	set @CotFormat='';
+--	SELECT @CotFormat+=',format(['+cast(a.ID as varchar(30))+'],''N2'') as '+'['+cast(a.ID as varchar(30))+']'
+--	FROM [kpis].[KPI_TB_SanPham_HeSoChatLuong] a
+--	where a.ThietBiID=@ThieBiID and a.ThuTuXuatHienCuaHSCL>0 and a.baocao=1  and a.TrangThai =20
+--	order by a.ThuTuXuatHienCuaHSCL
+--	set @CotFormat=substring(@CotFormat,2,len(@CotFormat));
+	
+	set @DC='';
+	set @CotTen='TBNgay.[Gio]';
+	--set @CotTen='';
+	SELECT @DC=iif(charindex('['+b.HeSoChatLuong+@DC+']',@CotTen)>0,@DC+nchar(8203),@DC)
+		--,@CotTen+= iif(a.ID not in (339,340)
+		--										, ',FORMAT(iif(ISNUMERIC(['+cast(a.ID as nvarchar(30))+'])=1,CONVERT(FLOAT,['+cast(a.ID as nvarchar(30))+']),['+cast(a.ID as nvarchar(30))+']),''N2'') as '+'['+cast(a.ID as nvarchar(30))+']'
+													
+		--									,',CONVERT(NVARCHAR(20),['+cast(a.ID as nvarchar(30))+']) as ['+b.HeSoChatLuong+@DC+']')
+		--,@CotTen+=',['+cast(a.ID as nvarchar(30))+'] as ['+b.HeSoChatLuong+@DC+']'										
+		,@CotTen+=',LEFT( ['+cast(a.ID as nvarchar(30))+'],'+'IIF(CHARINDEX(''.'',['+cast(a.ID as nvarchar(30))+'])>0,CHARINDEX(''.'',['+cast(a.ID as nvarchar(30))+'])+2,LEN(['+cast(a.ID as nvarchar(30))+']))) as ['+b.HeSoChatLuong+@DC+']'
+	
+	FROM [kpis].[KPI_TB_SanPham_HeSoChatLuong] a
+	inner join kpis.KPI_CacHeSoChatLuong b
+	on a.HeSoChatLuongID=b.ID
+	where a.ThietBiID=@ThieBiID and a.ThuTuXuatHienCuaHSCL>0 and a.baocao=1  and a.TrangThai =20
+	order by a.ThuTuXuatHienCuaHSCL ;
+	--select @CotTen; return;
+
+	set @ThemDuLieu='insert into @TBL '+char(13)
+		+'Select top 31 cast(iif(Gio<6,Gio+19,Gio-5) as nvarchar(20))  TT,
+		 iif(Gio<10,''0'','''')+cast(Gio as nvarchar(2)) [Gio],'
+		+@Cot+char(13)+' From ('+char(13)
+		+'select sl.TB_SanPham_HeSoChatLuong_ID ID,Gio,sl.GiaTri'+char(13)
+		+' from kpis.KPI_NhapLieuKCS sl'+char(13)
+		+' where (sl.[TrangThaiBanGhi]=20 or sl.[TrangThaiBanGhi]=203)'+char(13)
+		+' and year(iif(sl.Gio<6,dateadd(day,-1,sl.Ngay),sl.Ngay))='+cast(YEAR(@ngaybatdau) as nvarchar(4))+char(13)
+		+' and month(iif(sl.Gio<6,dateadd(day,-1,sl.Ngay),sl.Ngay))='+cast(MONTH(@ngaybatdau) as nvarchar(4))+char(13)
+		+' and day(iif(sl.Gio<6,dateadd(day,-1,sl.Ngay),sl.Ngay))='+cast(day(@ngaybatdau) as nvarchar(4))+char(13)
+		+') P PIVOT (MAX(P.GiaTri) '+char(13)
+		+'For ID in ('+char(13)
+		+@Cot+')) as pvt '+char(13)
+		+'order by TT;'+char(13);
+	--select @ThemDuLieu;return;
+	
+
+	set @_Tong_Hop_='''_Tong_Hop_'' as _Tong_Hop_';
+
+ 
+
+   --	select  @_Tong_Hop_+= iif(a.ID not in (339,340), ',convert(nvarchar(50),_Tong_Hop_(iif(ISNUMERIC(['+cast(a.ID as nvarchar(30))+'])=1,format(CONVERT(FLOAT,['+cast(a.ID as nvarchar(30))+']),''N2''),NULL))) as '+'['+cast(a.ID as nvarchar(30))+']',',NULL  as '+'['+cast(a.ID as nvarchar(30))+']' )
+	
+	
+	
+	--select  @_Tong_Hop_+= iif(a.ID not in (339,340), ',convert(nvarchar(50),_Tong_Hop_(format(CONVERT(FLOAT,['+cast(a.ID as nvarchar(30))+']),''N2''))) as '+'['+cast(a.ID as nvarchar(30))+']',',NULL  as '+'['+cast(a.ID as nvarchar(30))+']' )
+	 select  @_Tong_Hop_+= iif(a.ID not in (339,340), ',format(_Tong_Hop_(iif(ISNUMERIC(['+cast(a.ID as nvarchar(30))+'])=1,CONVERT(FLOAT,['+cast(a.ID as nvarchar(30))+']),NULL)),''N2'') as '+'['+cast(a.ID as nvarchar(30))+']'
+													,',''''  as '+'['+cast(a.ID as nvarchar(30))+']' )
+	
+	FROM [kpis].[KPI_TB_SanPham_HeSoChatLuong] a
+	where a.ThietBiID=@ThieBiID and a.ThuTuXuatHienCuaHSCL>0 and a.baocao=1   and a.TrangThai =20
+	order by a.ThuTuXuatHienCuaHSCL;
+	 
+	
+	--select @Cot;return;
+	declare @ngay1 nvarchar(25) =''''+convert(varchar(10),@ngaybatdau,120)+'''';
+	declare @thietbi1 nvarchar(10)=convert(nvarchar(20),@ThieBiID )
+	declare @ngay_thietbi nvarchar(50)=''''+convert(varchar(10),@ngaybatdau,120)+'''' +' Ngay,' + convert(nvarchar(20),@ThieBiID )+' ThietBiID,';
+	declare @ngay_thietbi1 nvarchar(50)=''''+convert(varchar(10),@ngaybatdau,120)+'''' +',' + convert(nvarchar(20),@ThieBiID )+',';
+	----------
+
+	declare @BangTam24gio nvarchar(max) ='declare @i int=0;
+					DECLARE @TBNGAY TABLE(Ngay datetime,ThietBiID int ,Gio nvarchar(20),STT nvarchar(2) )
+					while @i<=30
+					begin
+					if @i<=23
+							begin
+							insert into @TBNGAY (Ngay,ThietBiID,Gio,STT )	
+							values ('+@ngay_thietbi1+'IIF(@i <10,''0'','''')+cast(@i as nvarchar(20)),cast(iif(@i<6,@i+19,@i-5) as nvarchar(2))) ;
+							set @i=@i+1;
+							end
+					else
+							begin
+							if @i=25 
+									insert into @TBNGAY (Ngay,ThietBiID,Gio,STT )	
+							values ('+@ngay_thietbi1+'''Max'',cast(@i as nvarchar(2))) ;
+							
+							else if @i=26
+							insert into @TBNGAY (Ngay,ThietBiID,Gio,STT )	
+							values ('+@ngay_thietbi1+'''Min'',cast(@i as nvarchar(2))) ;
+							else if @i=27
+							insert into @TBNGAY (Ngay,ThietBiID,Gio,STT )	
+							values ('+@ngay_thietbi1+'''AVG'',cast(@i as nvarchar(2))) ;	
+							
+							else if @i=28
+							insert into @TBNGAY (Ngay,ThietBiID,Gio,STT )	
+							values ('+@ngay_thietbi1+'''STDEV'',cast(@i as nvarchar(2))) ;		
+							
+							else if @i=29
+							insert into @TBNGAY (Ngay,ThietBiID,Gio,STT )	
+							values ('+@ngay_thietbi1+'N''COUNT'',cast(@i as nvarchar(2))) ;
+								else if @i=30
+							insert into @TBNGAY (Ngay,ThietBiID,Gio,STT )	
+							values ('+@ngay_thietbi1+'N''Sum'',cast(@i as nvarchar(2))) ;
+							set @i=@i+1;
+							end	 
+	
+					end ;'
+
+
+	-------------
+
+
+
+
+	set @TSQL=@TaoBang+@ThemDuLieu	+char(13)  + @BangTam24gio   +char(13) 
+		--+'Select [Gio] ,'
+		--+@Cot+char(13)+' from ('+char(13)
+		
+		+'Select '+@CotTen+char(13)+',NL.GhiChu from @TBNGAY TBNgay left join(' +char(13)		  
+		+'Select '+@ngay_thietbi+' TB.* from @TBL TB '+char(13)	
+		+' union Select  '+@ngay_thietbi+'''25'' Gio,* from (select '+replace(@_Tong_Hop_,'_Tong_Hop_','Max')+' from @TBL) a '+char(13)
+		+' union Select  '+@ngay_thietbi+'''26'' Gio,* from (select '+replace(@_Tong_Hop_,'_Tong_Hop_','Min')+' from @TBL) a '+char(13)
+		+' union Select  '+@ngay_thietbi+'''27'' Gio,* from (select '+replace(@_Tong_Hop_,'_Tong_Hop_','AVG')+' from @TBL) a '+char(13)
+		+' union Select  '+@ngay_thietbi+'''28'' Gio,* from (select '+replace(@_Tong_Hop_,'_Tong_Hop_','STDEV')+' from @TBL) a '+char(13)	
+		+' union Select  '+@ngay_thietbi+'''29'' Gio,* from (select '+replace(@_Tong_Hop_,'_Tong_Hop_','Count')+' from @TBL) a '+char(13)	
+		+' union Select  '+@ngay_thietbi+'''30'' Gio,* from (select '+replace(@_Tong_Hop_,'_Tong_Hop_','Sum')+' from @TBL) a '+char(13)	
+		+') a '+char(13)+' 
+		on a.Gio=TBNgay.Gio  
+		left join  kpis.KPI_NhapLieuKCS_GhiChu NL
+		
+		--(select IIF(GIO <10,''0'','''')+cast(gio as nvarchar(20)) AS Gio,ngay,ghichu,thietbiID from kpis.KPI_NhapLieuKCS_GhiChu where ngay= '+@ngay1+' and thietbiID='+@thietbi1+')NL
+		 on convert(date,NL.Ngay)=convert(date ,TBNgay.Ngay ) 
+		and IIF(NL.GIO <10,''0'','''')+cast(nl.gio as nvarchar(20)) =CAST(TBNgay.Gio AS NVARCHAR(20))  and NL.ThietBiID =TBNgay.ThietBiID
+		where TBNgay.ngay= '+@ngay1+' and TBNgay.thietbiID='+@thietbi1+'
+		order by Convert(int,TBNgay.STT)';
+	select @TSQL;
+	--exec (@TSQL);
+END
